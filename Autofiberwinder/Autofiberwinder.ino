@@ -7,8 +7,14 @@
 */
 
 // Define User Types below here or use a .h file
-#include <LightChrono.h>
-#include <Chrono.h>
+
+#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal.h>
+#include <math.h>
+
+
+
+
 int pin_Joystick1_X = A0; //摇杆控制器X引脚
 int pin_Joystick1_Y = A1; //摇杆控制器Y引脚
 int pin_StepperX_PUL = 8;  //StepperX_滑台电机_PUL_脉冲引脚
@@ -26,22 +32,11 @@ int StepperX_pulsePerRotation = 400; //滑台电机周转脉冲数;
 int StepperY_pulsePerRotation = 400; //主轴电机周转脉冲数;
 int Globalinterval = 1000; //全局时间间隔 微秒
 
-//
-
-
-// Define Function Prototypes that use User Types below here or use a .h file
-//
-
-
-// Define Functions below here or use other .ino or cpp files
-//
-
-// The setup() function runs once each time the micro-controller starts
-
 
 void setup()
 {
 	pinMode(pin_Joystick1_X, INPUT);
+	pinMode(pin_Joystick1_Y, INPUT);
 	pinMode(pin_StepperX_PUL, OUTPUT);
 	pinMode(pin_StepperX_DIR, OUTPUT);
 	pinMode(pin_StepperY_PUL, OUTPUT);
@@ -49,16 +44,14 @@ void setup()
 
 	pinMode(pin_Switch1_switch, INPUT);
 	pinMode(pin_Switch2_switch, INPUT);
-	ZeroY();
-	ZeroX();
+
+	Serial.begin(9600);
 
 }
 
 // Add the main program code into the continuous loop() function
-void loop()
-{
-
-
+void loop(){
+	manualControl();
 }
 
 int linearto(int tgtx,int tgty, int dtime) {	//线性插补移动到tgtx,tgty,用时dtime（微秒） 
@@ -66,6 +59,7 @@ int linearto(int tgtx,int tgty, int dtime) {	//线性插补移动到tgtx,tgty,用时dtime
 	bool ky; //y轴运动方向标记
 	int F;	//直线插补偏差
 	int sigma = tgtx + tgty - posX - posY; //总偏差量-总脉冲数
+	float distance = sqrt((tgtx-posX)^2+(tgty-posY)^2);
 	bool dir;
 	int localInterval = dtime / sigma;
 
@@ -140,6 +134,7 @@ void drive(int pin_PUL, bool dir, int periodmicros)   //按dir方向驱动pin_PUL
 }
 
 void ZeroX() {
+	Serial.println("Finding Zero point of X axis, please stand by...");
 	digitalWrite(pin_StepperX_DIR, LOW); //滑台向左
 	delay(100);
 	while (!digitalRead(pin_Switch1_switch)) { //开关未被触发时
@@ -152,7 +147,7 @@ void ZeroX() {
 		pulseOnce(pin_StepperX_PUL, 500);
 	}
 	posX = 0;
-
+	Serial.println("Zero point of X axis found.");
 }
 void ZeroY() { posY = 0; }
 
@@ -178,21 +173,42 @@ void manualControl()
 {
 	int offsetX_Joystick1 = map(analogRead(pin_Joystick1_X), 0, 1024, -100, 100);
 	int offsetY_Joystick1 = map(analogRead(pin_Joystick1_Y), 0, 1024, -100, 100);
-	int offset = sqrt(offsetX_Joystick1 ^ 2 + offsetY_Joystick1 ^ 2);
-
+	int offset = sqrt(pow(offsetX_Joystick1,2) + pow(offsetY_Joystick1, 2));
+	Serial.println(offset);
+	
+	
 	if (offset>15) 
 	{
-
+		int interval = 3000;
+		if (offset > 100) {
+			digitalWrite(pin_StepperX_DIR, LOW);
+			pulseOnce(pin_StepperX_PUL, interval);
+		}
+		if (offset < -100) {
+			digitalWrite(pin_StepperX_DIR, HIGH);
+			pulseOnce(pin_StepperX_PUL, interval);
+		}
 	}
+	
 
 
-	int interval = 30000 * 1 / abs(offset);
-	if (offset > 10) {
-		digitalWrite(pin_StepperX_DIR, LOW);
-		pulseOnce(pin_StepperX_PUL, interval);
-	}
-	if (offset < -10) {
-		//digitalWrite(Stepper1_pinDIR, HIGH);
-		//pulseOnce(Stepper1_pinPUL, interval);
-	}
+
 }
+
+class Point {
+public:
+	int x; 
+	int y;
+	bool IsDone;
+
+	void SetPosition(int a,int b) {
+		x = a; y = b;
+	}
+	void LinearMoveto(int targetX, int targetY, int dt) {
+	
+	}
+
+private:
+
+
+};
