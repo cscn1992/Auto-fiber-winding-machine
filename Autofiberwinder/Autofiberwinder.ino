@@ -12,9 +12,6 @@
 #include <LiquidCrystal.h>
 #include <math.h>
 
-
-
-
 int pin_Joystick1_X = A0; //摇杆控制器X引脚
 int pin_Joystick1_Y = A1; //摇杆控制器Y引脚
 int pin_StepperX_PUL = 8;  //StepperX_滑台电机_PUL_脉冲引脚
@@ -25,12 +22,221 @@ int pin_Switch1_switch = 12;  //限位开关左
 int pin_Switch2_switch = 13;  //限位开关右
 int X = pin_StepperX_PUL;	//X轴（滑台电机）脉冲引脚
 int Y = pin_StepperY_PUL;	//X轴（绕线电机）脉冲引脚
-int posX, posY, tgtX[100], tgtY[100], kX, kY;
+int posX=0, posY=0, tgtX[100], tgtY[100], kX, kY;
 int StepperX_multiplier = 1;
 int StepperY_multiplier = 1;
 int StepperX_pulsePerRotation = 400; //滑台电机周转脉冲数;
 int StepperY_pulsePerRotation = 400; //主轴电机周转脉冲数;
 int Globalinterval = 1000; //全局时间间隔 微秒
+
+
+class Point {
+public:
+
+	bool IsDone = true;
+	bool IsMoving = false;
+
+	void SetCurrentPositionAs(int a, int b) {
+		x = a; y = b;
+	}
+
+	void ReportPosition() {
+		Serial.print(x); Serial.print(","); Serial.println(y);
+
+	}
+
+	void ReturnZero() {
+		Serial.println("Finding Zero point of X axis, please stand by...");
+		digitalWrite(pin_StepperX_DIR, LOW); //滑台向左
+		delay(100);
+		while (!digitalRead(pin_Switch1_switch)) { //开关未被触发时
+			Pulse(pin_StepperX_PUL, 500);
+		}
+
+		delay(1000);
+		digitalWrite(pin_StepperX_DIR, HIGH);
+		for (int i = 0; i < StepperX_pulsePerRotation; i++) {
+			Pulse(pin_StepperX_PUL, 500);
+		}
+		Serial.println("Zero point of X axis found.");
+		SetCurrentPositionAs(0, 0);
+		Serial.println("Set Current Position to 0,0");
+	}
+
+	void driveConstSpeed(int pin_PUL, bool dir, float speed)   //按dir方向驱动pin_PUL
+	{
+		IsDone = false;
+		int periodmicros = 1/speed;
+
+		if (pin_PUL = pin_StepperX_PUL)
+		{
+			digitalWrite(pin_StepperX_DIR, dir);                     //滑台低电平（0，low）向左
+			Pulse(pin_PUL, periodmicros);
+			if (!dir)
+			{														 //dir=0滑台向左
+				x = x - 1;
+			}
+			else
+			{
+				x = x + 1;
+			}
+		}
+
+		if (pin_PUL = pin_StepperY_PUL)
+		{
+			digitalWrite(pin_StepperY_DIR, dir);                     //主轴低电平（0，low）向后
+			Pulse(pin_PUL, periodmicros);
+			if (!dir)
+			{														//dir=0主轴向后退纱
+				y = y - 1;
+			}
+			else
+			{
+				y = y + 1;
+			}
+		}
+		ReportPosition();
+		IsDone = true;
+	}
+
+	void Drive(int pin_PUL, bool dir, int periodmicros)   //按dir方向驱动pin_PUL
+	{
+		IsMoving = true;
+		if (pin_PUL = pin_StepperX_PUL)
+		{
+			digitalWrite(pin_StepperX_DIR, dir);                     //滑台低电平（0，low）向左
+			Pulse(pin_PUL, periodmicros);
+			if (!dir)
+			{														 //dir=0滑台向左
+				x = x - 1;
+			}
+			else
+			{
+				x = x + 1;
+			}
+		}
+
+		if (pin_PUL = pin_StepperY_PUL)
+		{
+			digitalWrite(pin_StepperY_DIR, dir);                     //主轴低电平（0，low）向后
+			Pulse(pin_PUL, periodmicros);
+			if (!dir)
+			{														//dir=0主轴向后退纱
+				y = y - 1;
+			}
+			else
+			{
+				y = y + 1;
+			}
+		}
+		ReportPosition();
+		IsMoving = false;
+	}
+
+	void LinearMoveto(int targetX, int targetY, int dt) { //dt为所用时间，单位为微秒
+		IsDone = false;
+		bool kx; //X轴运动方向标记
+		bool ky; //y轴运动方向标记
+		int F;	//直线插补偏差
+		int sigma = targetX + targetY - x - y; //总偏差量-总脉冲数
+		float distance = sqrt((targetX - x) ^ 2 + (targetX - y) ^ 2);
+		bool dir;
+		int localInterval = dt / sigma;
+
+		if (targetX >= x & targetY >= y) //第一象限直线
+		{
+			kx = 1;
+			ky = 1;
+		}
+		if (targetX < x & targetY >= y) //第二象限
+		{
+			kx = 0;
+			ky = 1;
+		}
+		if (targetX < x & targetY < y) //第三象限
+		{
+			kx = 0;
+			ky = 0;
+		}
+		if (targetX >= x & targetY < y) //第四象限
+		{
+			kx = 0;
+			ky = 1;
+		}
+		while (sigma != 0)
+		{
+
+			if (F >= 0)
+			{
+				Drive(X, kx, localInterval);
+				F = F - targetY;
+			}
+			else
+			{
+				Drive(Y, ky, localInterval);
+				F = F + targetX;
+			}
+			sigma = targetX + targetY - x - y;
+		}
+		IsDone = true;
+	}
+
+
+	void LinearMovetoCSpeed(int targetX, int targetY, float speed) { //speed的单位为脉冲/微秒 应为赫兹/1000/1000
+		IsDone = false;
+		
+		bool kx; //X轴运动方向标记
+		bool ky; //y轴运动方向标记
+		int F;	//直线插补偏差
+		int sigma = targetX + targetY - x - y; //总偏差量-总脉冲数
+		int dt = sigma / speed;
+		float distance = sqrt((targetX - x) ^ 2 + (targetX - y) ^ 2);
+		bool dir;
+		int localInterval = dt / sigma;
+
+		if (targetX >= x & targetY >= y) //第一象限直线
+		{
+			kx = 1;
+			ky = 1;
+		}
+		if (targetX < x & targetY >= y) //第二象限
+		{
+			kx = 0;
+			ky = 1;
+		}
+		if (targetX < x & targetY < y) //第三象限
+		{
+			kx = 0;
+			ky = 0;
+		}
+		if (targetX >= x & targetY < y) //第四象限
+		{
+			kx = 0;
+			ky = 1;
+		}
+		while (sigma != 0)
+		{
+
+			if (F >= 0)
+			{
+				Drive(X, kx, localInterval);
+				F = F - targetY;
+			}
+			else
+			{
+				Drive(Y, ky, localInterval);
+				F = F + targetX;
+			}
+			sigma = targetX + targetY - x - y;
+		}
+		IsDone = true;
+	}
+private:
+	int x;
+	int y;
+
+};
+
 
 
 void setup()
@@ -41,117 +247,30 @@ void setup()
 	pinMode(pin_StepperX_DIR, OUTPUT);
 	pinMode(pin_StepperY_PUL, OUTPUT);
 	pinMode(pin_StepperY_DIR, OUTPUT);
-
 	pinMode(pin_Switch1_switch, INPUT);
 	pinMode(pin_Switch2_switch, INPUT);
-
 	Serial.begin(9600);
 
 }
 
 // Add the main program code into the continuous loop() function
 void loop(){
-	manualControl();
+	Point M;
+	M.ReturnZero();
+	while (1) {
+		//M.LinearMoveto(1000, 1000, 50000000);
+		delay(1000);
+		//M.LinearMoveto(0, 0, 50000000);
+		delay(1000);
+	}
+
+	//manualControl();
 }
 
-int linearto(int tgtx,int tgty, int dtime) {	//线性插补移动到tgtx,tgty,用时dtime（微秒） 
-	bool kx; //X轴运动方向标记
-	bool ky; //y轴运动方向标记
-	int F;	//直线插补偏差
-	int sigma = tgtx + tgty - posX - posY; //总偏差量-总脉冲数
-	float distance = sqrt((tgtx-posX)^2+(tgty-posY)^2);
-	bool dir;
-	int localInterval = dtime / sigma;
 
-	if (tgtx >= posX & tgty >= posY) //第一象限直线
-	{
-		kx = 1;
-		ky = 1;
-	}
-	if (tgtx < posX & tgty >= posY) //第二象限
-	{
-		kx = 0;
-		ky = 1;
-	}
-	if (tgtx < posX & tgty < posY) //第三象限
-	{
-		kx = 0;
-		ky = 0;
-	}
-	if (tgtx >= posX & tgty < posY) //第四象限
-	{
-		kx = 0;
-		ky = 1;
-	}
 
-	while (sigma != 0)
-	{
 
-		if (F >= 0)
-		{
-			drive(X, kx, localInterval);
-			F = F - tgty;
-		}
-		else
-		{
-			drive(Y, ky, localInterval);
-			F = F + tgtx;
-		}
-		sigma = tgtx + tgty - posX - posY;
-	}
-	return(1);
-}
-
-void drive(int pin_PUL, bool dir, int periodmicros)   //按dir方向驱动pin_PUL
-{
-	if (pin_PUL = pin_StepperX_PUL)
-	{
-		digitalWrite(pin_StepperX_DIR, dir);                     //滑台低电平（0，low）向左
-		pulseOnce(pin_PUL, periodmicros);
-		if (!dir)
-		{														 //dir=0滑台向左
-			posX = posX - 1;
-		}
-		else
-		{
-			posX = posX + 1;
-		}
-	}
-
-	if (pin_PUL = pin_StepperY_PUL)
-	{
-		digitalWrite(pin_StepperY_DIR, dir);                     //主轴低电平（0，low）向后
-		pulseOnce(pin_PUL, periodmicros);
-		if (!dir)
-		{														//dir=0主轴向后退纱
-			posY = posY - 1;
-		}
-		else
-		{
-			posY = posY + 1;
-		}
-	}
-}
-
-void ZeroX() {
-	Serial.println("Finding Zero point of X axis, please stand by...");
-	digitalWrite(pin_StepperX_DIR, LOW); //滑台向左
-	delay(100);
-	while (!digitalRead(pin_Switch1_switch)) { //开关未被触发时
-		pulseOnce(pin_StepperX_PUL, 500);
-	}
-
-	delay(1000);
-	digitalWrite(pin_StepperX_DIR, HIGH);
-	for (int i = 0; i < StepperX_pulsePerRotation; i++) {
-		pulseOnce(pin_StepperX_PUL, 500);
-	}
-	posX = 0;
-	Serial.println("Zero point of X axis found.");
-}
-void ZeroY() { posY = 0; }
-
-void pulseOnce(int pin, int intevalus)  //(pin,periodmicros)向发送单词方波脉冲 脉冲宽度periodmicros，单位微秒
+void Pulse(int pin, int intevalus)  //(pin,periodmicros)向发送单词方波脉冲 脉冲周期intevalus，单位微秒
 {
 	digitalWrite(pin, HIGH);
 	delayMicroseconds(intevalus / 2);
@@ -175,40 +294,32 @@ void manualControl()
 	int offsetY_Joystick1 = map(analogRead(pin_Joystick1_Y), 0, 1024, -100, 100);
 	int offset = sqrt(pow(offsetX_Joystick1,2) + pow(offsetY_Joystick1, 2));
 	Serial.println(offset);
+	Serial.print(posX);	Serial.print(","); Serial.println(posY);
 	
-	
-	if (offset>15) 
+	if (offset>20) 
 	{
 		int interval = 3000;
-		if (offset > 100) {
+		if (offsetX_Joystick1 > 20) {
 			digitalWrite(pin_StepperX_DIR, LOW);
-			pulseOnce(pin_StepperX_PUL, interval);
+			Pulse(pin_StepperX_PUL, interval);
+			posX = posX - 1;
+
 		}
-		if (offset < -100) {
+		if (offsetX_Joystick1 < -20) {
 			digitalWrite(pin_StepperX_DIR, HIGH);
-			pulseOnce(pin_StepperX_PUL, interval);
+			Pulse(pin_StepperX_PUL, interval);
+			posX = posX + 1;
+		}
+		if (offsetY_Joystick1 > 20) {
+			digitalWrite(pin_StepperY_DIR, LOW);
+			Pulse(pin_StepperY_PUL, interval);
+			posY = posY - 1;
+
+		}
+		if (offsetY_Joystick1 < -20) {
+			digitalWrite(pin_StepperY_DIR, HIGH);
+			Pulse(pin_StepperY_PUL, interval);
+			posY = posY + 1;
 		}
 	}
-	
-
-
-
 }
-
-class Point {
-public:
-	int x; 
-	int y;
-	bool IsDone;
-
-	void SetPosition(int a,int b) {
-		x = a; y = b;
-	}
-	void LinearMoveto(int targetX, int targetY, int dt) {
-	
-	}
-
-private:
-
-
-};
