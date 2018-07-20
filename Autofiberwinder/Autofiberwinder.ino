@@ -42,7 +42,6 @@ public:
 
 	void ReportPosition() {
 		Serial.print(x); Serial.print(","); Serial.println(y);
-
 	}
 
 	void ReturnZero() {
@@ -63,45 +62,10 @@ public:
 		Serial.println("Set Current Position to 0,0");
 	}
 
-	void driveConstSpeed(int pin_PUL, bool dir, float speed)   //按dir方向驱动pin_PUL
+	void DriveConstFreq(int pin_PUL, bool dir, float freqeuncy)   //按dir方向驱动pin_PUL
 	{
-		IsDone = false;
-		int periodmicros = 1/speed;
-
-		if (pin_PUL = pin_StepperX_PUL)
-		{
-			digitalWrite(pin_StepperX_DIR, dir);                     //滑台低电平（0，low）向左
-			Pulse(pin_PUL, periodmicros);
-			if (!dir)
-			{														 //dir=0滑台向左
-				x = x - 1;
-			}
-			else
-			{
-				x = x + 1;
-			}
-		}
-
-		if (pin_PUL = pin_StepperY_PUL)
-		{
-			digitalWrite(pin_StepperY_DIR, dir);                     //主轴低电平（0，low）向后
-			Pulse(pin_PUL, periodmicros);
-			if (!dir)
-			{														//dir=0主轴向后退纱
-				y = y - 1;
-			}
-			else
-			{
-				y = y + 1;
-			}
-		}
-		ReportPosition();
-		IsDone = true;
-	}
-
-	void Drive(int pin_PUL, bool dir, int periodmicros)   //按dir方向驱动pin_PUL
-	{
-		IsMoving = true;
+		IsMoving = false;
+		int periodmicros = 1/ freqeuncy;
 		if (pin_PUL = pin_StepperX_PUL)
 		{
 			digitalWrite(pin_StepperX_DIR, dir);                     //滑台低电平（0，low）向左
@@ -133,8 +97,42 @@ public:
 		IsMoving = false;
 	}
 
+	void Drive(int pin_PUL, bool dir, int periodmicros)   //按dir方向驱动pin_PUL 脉冲周期=peiodmicros
+	{
+		IsMoving = true;
+		if (pin_PUL = pin_StepperX_PUL)
+		{
+			digitalWrite(pin_StepperX_DIR, dir);                     //滑台低电平（0，low）向左
+			Pulse(pin_PUL, periodmicros);
+			if (!dir)
+			{														 //dir=0滑台向左
+				x = x - 1;
+			}
+			else
+			{
+				x = x + 1;
+			}
+		}
+		if (pin_PUL = pin_StepperY_PUL)
+		{
+			digitalWrite(pin_StepperY_DIR, dir);                     //主轴低电平（0，low）向后
+			Pulse(pin_PUL, periodmicros);
+			if (!dir)
+			{														//dir=0主轴向后退纱
+				y = y - 1;
+			}
+			else
+			{
+				y = y + 1;
+			}
+		}
+		ReportPosition();
+		IsMoving = false;
+	}
+
 	void LinearMoveto(int targetX, int targetY, int dt) { //dt为所用时间，单位为微秒
 		IsDone = false;
+		Serial.print("Moving to "); Serial.print(targetX); Serial.print(" "); Serial.println(targetY);
 		bool kx; //X轴运动方向标记
 		bool ky; //y轴运动方向标记
 		int F;	//直线插补偏差
@@ -181,8 +179,7 @@ public:
 		IsDone = true;
 	}
 
-
-	void LinearMovetoCSpeed(int targetX, int targetY, float speed) { //speed的单位为脉冲/微秒 应为赫兹/1000/1000
+	void LinearMovetoCSpeed(int targetX, int targetY, float speed) { //speed的单位为脉冲/微秒 应为赫兹*1000*1000
 		IsDone = false;
 		
 		bool kx; //X轴运动方向标记
@@ -231,6 +228,8 @@ public:
 		}
 		IsDone = true;
 	}
+
+
 private:
 	int x;
 	int y;
@@ -250,6 +249,10 @@ void setup()
 	pinMode(pin_Switch1_switch, INPUT);
 	pinMode(pin_Switch2_switch, INPUT);
 	Serial.begin(9600);
+
+	LiquidCrystal_I2C LCD1(0x27);
+	LCD1.begin(16,2);
+
 
 }
 
